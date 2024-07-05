@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "292167160200",
+    "firebase_url": "https://testcalendar-ec238-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "testcalendar-ec238",
+    "storage_bucket": "testcalendar-ec238.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:292167160200:android:b91288719cbe28f77bea3d",
+        "android_client_info": {
+          "package_name": "TestCalendar.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "292167160200-tcgphncclubbhgnks2frb4hms14dm3c8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQOElLoOKQh80hjmRqb3bPgMEkijrUxRI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "292167160200-tcgphncclubbhgnks2frb4hms14dm3c8.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "292167160200-bveeomqimgdep807ku6qmf9381jc9g4l.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.myFlutterWebApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

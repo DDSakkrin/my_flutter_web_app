@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "testcalendar": "testcalendar-ec238",
+    "default": "testcalendar-ec238"
+  },
+  "targets": {},
+  "etags": {},
+  "dataconnectEmulatorConfig": {}
+}
