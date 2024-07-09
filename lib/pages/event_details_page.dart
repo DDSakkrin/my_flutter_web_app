@@ -1,21 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/event_model.dart';
 import '../services/firebase_service.dart';
 
-class EventDetailsPage extends StatelessWidget {
+class EventDetailsPage extends StatefulWidget {
   final Event event;
 
   EventDetailsPage({required this.event});
 
+  @override
+  _EventDetailsPageState createState() => _EventDetailsPageState();
+}
+
+class _EventDetailsPageState extends State<EventDetailsPage> {
+  bool _isJoined = false;
+  User? _currentUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentUser = FirebaseAuth.instance.currentUser;
+  }
+
   Future<void> _deleteEvent(BuildContext context) async {
     try {
-      await FirebaseService.deleteEvent(event.id, event.imageUrl);
+      await FirebaseService.deleteEvent(widget.event.id, imageUrl: widget.event.imageUrl);
       Navigator.pop(context); // Navigate back after deletion
     } catch (e) {
-      // Handle any errors here
       print('Error deleting event: $e');
-      // Show an error dialog or message
       showDialog(
         context: context,
         builder: (BuildContext context) {
@@ -75,21 +88,21 @@ class EventDetailsPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              event.title,
+              widget.event.title,
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 10),
             Text(
-              event.description,
+              widget.event.description,
               style: TextStyle(fontSize: 18),
             ),
             SizedBox(height: 10),
             Text(
-              'Date: ${event.date.toLocal()}',
+              'Date: ${widget.event.date.toLocal()}'.split(' ')[0],
               style: TextStyle(fontSize: 16),
             ),
             SizedBox(height: 20),
-            if (event.imageUrl != null && event.imageUrl!.isNotEmpty)
+            if (widget.event.imageUrl != null && widget.event.imageUrl!.isNotEmpty)
               Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
@@ -106,7 +119,7 @@ class EventDetailsPage extends StatelessWidget {
                   child: AspectRatio(
                     aspectRatio: 16 / 9,
                     child: CachedNetworkImage(
-                      imageUrl: event.imageUrl!,
+                      imageUrl: widget.event.imageUrl!,
                       fit: BoxFit.cover,
                       placeholder: (context, url) => Center(child: CircularProgressIndicator()),
                       errorWidget: (context, url, error) => Container(
