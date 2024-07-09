@@ -29,18 +29,23 @@ class _AddEventPageState extends State<AddEventPage> {
   TimeOfDay? _selectedTime;
 
   Future<void> _pickImage() async {
-    if (kIsWeb) {
-      final pickedBytes = await ImagePickerWeb.getImageAsBytes();
-      setState(() {
-        _imageBytes = pickedBytes;
-        _imageFile = null;
-      });
-    } else {
-      final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
-      setState(() {
-        _imageFile = File(pickedFile?.path ?? '');
-        _imageBytes = null;
-      });
+    try {
+      if (kIsWeb) {
+        final pickedBytes = await ImagePickerWeb.getImageAsBytes();
+        setState(() {
+          _imageBytes = pickedBytes;
+          _imageFile = null;
+        });
+      } else {
+        final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
+        setState(() {
+          _imageFile = pickedFile != null ? File(pickedFile.path) : null;
+          _imageBytes = null;
+        });
+      }
+    } catch (e) {
+      print('Error picking image: $e');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error picking image')));
     }
   }
 
@@ -70,24 +75,26 @@ class _AddEventPageState extends State<AddEventPage> {
     }
   }
 
+  Future<String?> _uploadImage() async {
+    try {
+      final storageRef = FirebaseStorage.instance.ref().child('event_images/${DateTime.now().toIso8601String()}.png');
+      if (kIsWeb && _imageBytes != null) {
+        await storageRef.putData(_imageBytes!);
+      } else if (_imageFile != null) {
+        await storageRef.putFile(_imageFile!);
+      }
+      return await storageRef.getDownloadURL();
+    } catch (e) {
+      print('Error uploading image: $e');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error uploading image')));
+      return null;
+    }
+  }
+
   Future<void> _submit() async {
     if (_formKey.currentState?.validate() ?? false) {
       _formKey.currentState?.save();
-      String? imageUrl;
-
-      if (_imageFile != null || _imageBytes != null) {
-        final storageRef = FirebaseStorage.instance.ref().child('event_images/${DateTime.now().toIso8601String()}.png');
-        try {
-          if (kIsWeb && _imageBytes != null) {
-            await storageRef.putData(_imageBytes!);
-          } else if (_imageFile != null) {
-            await storageRef.putFile(_imageFile!);
-          }
-          imageUrl = await storageRef.getDownloadURL();
-        } catch (e) {
-          print('Error uploading image: $e');
-        }
-      }
+      String? imageUrl = await _uploadImage();
 
       final newEvent = Event(
         id: FirebaseService.generateEventId(),
@@ -103,8 +110,13 @@ class _AddEventPageState extends State<AddEventPage> {
         joinedUsers: [],
       );
 
-      await FirebaseService.addEvent(newEvent);
-      Navigator.pop(context);
+      try {
+        await FirebaseService.addEvent(newEvent);
+        Navigator.pop(context);
+      } catch (e) {
+        print('Error adding event: $e');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error adding event')));
+      }
     }
   }
 
@@ -137,7 +149,7 @@ class _AddEventPageState extends State<AddEventPage> {
               SizedBox(height: 20),
               Row(
                 children: [
-                  Text("Date: ${_selectedDate.toLocal()}".split(' ')[0]),
+                  Text("Date: ${_selectedDate.toLocal().toIso8601String().split('T').first}"),
                   SizedBox(width: 20.0),
                   ElevatedButton(
                     onPressed: () => _pickDate(context),

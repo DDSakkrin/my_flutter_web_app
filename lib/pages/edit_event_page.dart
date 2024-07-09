@@ -29,6 +29,7 @@ class _EditEventPageState extends State<EditEventPage> {
   late DateTime _selectedDate;
   TimeOfDay? _selectedTime;
   String? _imageUrl;
+  late List<Map<String, String>> _joinedUsers; // Correct type for joinedUsers
 
   @override
   void initState() {
@@ -41,6 +42,7 @@ class _EditEventPageState extends State<EditEventPage> {
     _selectedTime = widget.event.reminderTime != null
         ? TimeOfDay.fromDateTime(widget.event.reminderTime!)
         : null;
+    _joinedUsers = List<Map<String, String>>.from(widget.event.joinedUsers); // Initialize joinedUsers with the correct type
   }
 
   Future<void> _pickImage() async {
@@ -86,8 +88,8 @@ class _EditEventPageState extends State<EditEventPage> {
   }
 
   Future<void> _submit() async {
-    if (_formKey.currentState!.validate()) {
-      _formKey.currentState!.save();
+    if (_formKey.currentState?.validate() ?? false) {
+      _formKey.currentState?.save();
 
       if (_imageFile != null || _imageBytes != null) {
         final storageRef = FirebaseStorage.instance
@@ -102,6 +104,8 @@ class _EditEventPageState extends State<EditEventPage> {
           _imageUrl = await storageRef.getDownloadURL();
         } catch (e) {
           print('Error uploading image: $e');
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error uploading image')));
+          return;
         }
       }
 
@@ -122,12 +126,16 @@ class _EditEventPageState extends State<EditEventPage> {
                 _selectedTime!.minute,
               )
             : null,
-        joinedUsers: widget.event.joinedUsers,
+        joinedUsers: _joinedUsers,
       );
 
-      await FirebaseService.updateEvent(updatedEvent);
-
-      Navigator.pop(context, true);
+      try {
+        await FirebaseService.updateEvent(updatedEvent);
+        Navigator.pop(context, true);
+      } catch (e) {
+        print('Error updating event: $e');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating event')));
+      }
     }
   }
 
