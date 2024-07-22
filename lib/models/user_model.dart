@@ -1,17 +1,16 @@
-class UserModel {
+import 'package:equatable/equatable.dart';
+
+class UserModel extends Equatable {
   final String id;
-  final String fullName;
-  final String email;
+  final String? fullName;
+  final String? email;
 
   UserModel({
     required this.id,
-    required this.fullName,
-    required this.email,
-  })  : assert(id.isNotEmpty, 'ID cannot be empty'),
-        assert(fullName.isNotEmpty, 'Full name cannot be empty'),
-        assert(email.isNotEmpty, 'Email cannot be empty');
+    this.fullName,
+    this.email,
+  });
 
-  /// Converts UserModel instance to a Map.
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -20,12 +19,9 @@ class UserModel {
     };
   }
 
-  /// Creates a UserModel instance from a Map.
   factory UserModel.fromMap(Map<String, dynamic> map) {
-    if (!map.containsKey('id') ||
-        !map.containsKey('fullName') ||
-        !map.containsKey('email')) {
-      throw ArgumentError('Missing required field(s) in map');
+    if (!map.containsKey('id')) {
+      throw ArgumentError('Missing required field: id');
     }
 
     return UserModel(
@@ -36,17 +32,5 @@ class UserModel {
   }
 
   @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-
-    return other is UserModel &&
-        other.id == id &&
-        other.fullName == fullName &&
-        other.email == email;
-  }
-
-  @override
-  int get hashCode {
-    return id.hashCode ^ fullName.hashCode ^ email.hashCode;
-  }
+  List<Object?> get props => [id, fullName, email];
 }

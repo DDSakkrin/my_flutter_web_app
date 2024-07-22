@@ -1,8 +1,9 @@
-import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'add_event_page.dart';
 import 'edit_event_page.dart';
@@ -14,8 +15,9 @@ import '../main.dart';
 
 class CalendarPage extends StatefulWidget {
   final User user;
+  final Function(String) onError;
 
-  CalendarPage({required this.user});
+  CalendarPage({required this.user, required this.onError});
 
   @override
   _CalendarPageState createState() => _CalendarPageState();
@@ -31,61 +33,38 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   void initState() {
     super.initState();
-    fetchEvents();
-  }
-
-  Future<void> fetchEvents() async {
-    setState(() {
-      isLoading = true;
+    initializeDateFormatting('th_TH', null);
+    FirebaseService.getEventsStream().listen((data) {
+      setState(() {
+        events = data;
+      });
     });
-
-    try {
-      List<Event> fetchedEvents = await FirebaseService.getEvents();
-      setState(() {
-        events = fetchedEvents;
-        _scheduleNotifications(fetchedEvents);
-      });
-    } catch (e) {
-      print('Error fetching events: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to load events')),
-      );
-    } finally {
-      setState(() {
-        isLoading = false;
-      });
-    }
-  }
-
-  void _scheduleNotifications(List<Event> events) {
-    for (var event in events) {
-      if (event.reminderTime != null &&
-          event.joinedUsers.any((user) => user['userId'] == widget.user.uid)) {
-        _scheduleNotification(event);
-      }
-    }
   }
 
   Future<void> _scheduleNotification(Event event) async {
-    var scheduledNotificationDateTime = event.reminderTime!.subtract(const Duration(days: 1));
+    if (event.reminderTime != null) {
+      var scheduledNotificationDateTime =
+          event.reminderTime!.subtract(const Duration(days: 1));
 
-    var androidPlatformChannelSpecifics = const AndroidNotificationDetails(
-      'your channel id',
-      'your channel name',
-      channelDescription: 'your channel description',
-      importance: Importance.max,
-      priority: Priority.high,
-      showWhen: false,
-    );
-    var platformChannelSpecifics = NotificationDetails(android: androidPlatformChannelSpecifics);
-    await flutterLocalNotificationsPlugin.schedule(
-      event.id.hashCode,
-      'Reminder: ${event.title} is tomorrow',
-      event.description,
-      scheduledNotificationDateTime,
-      platformChannelSpecifics,
-      androidAllowWhileIdle: true,
-    );
+      var androidPlatformChannelSpecifics = const AndroidNotificationDetails(
+        'your channel id',
+        'your channel name',
+        channelDescription: 'your channel description',
+        importance: Importance.max,
+        priority: Priority.high,
+        showWhen: false,
+      );
+      var platformChannelSpecifics =
+          NotificationDetails(android: androidPlatformChannelSpecifics);
+      await flutterLocalNotificationsPlugin.schedule(
+        event.id.hashCode,
+        'Reminder: ${event.title} is tomorrow',
+        event.description,
+        scheduledNotificationDateTime,
+        platformChannelSpecifics,
+        androidAllowWhileIdle: true,
+      );
+    }
   }
 
   List<Event> _getEventsForDay(DateTime day) {
@@ -94,7 +73,8 @@ class _CalendarPageState extends State<CalendarPage> {
 
   List<Event> _getUpcomingEvents() {
     DateTime now = DateTime.now();
-    List<Event> upcomingEvents = events.where((event) => event.date.isAfter(now)).toList();
+    List<Event> upcomingEvents =
+        events.where((event) => event.date.isAfter(now)).toList();
     upcomingEvents.sort((a, b) => a.date.compareTo(b.date));
     return upcomingEvents;
   }
@@ -104,7 +84,6 @@ class _CalendarPageState extends State<CalendarPage> {
       itemCount: eventList.length,
       itemBuilder: (context, index) {
         Event event = eventList[index];
-        bool isAttending = event.joinedUsers.any((user) => user['userId'] == widget.user.uid);
         return Card(
           margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
           shape: RoundedRectangleBorder(
@@ -116,34 +95,15 @@ class _CalendarPageState extends State<CalendarPage> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             subtitle: Text(event.description),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (isAttending)
-                  const Icon(Icons.event_available, color: Colors.green),
-                IconButton(
-                  icon: const Icon(Icons.info, color: Colors.blue),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => EventDetailsPage(event: event)),
-                    );
-                  },
+            onTap: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => EventDetailsPage(event: event),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.orange),
-                  onPressed: () async {
-                    bool? result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => EditEventPage(user: widget.user, event: event)),
-                    );
-                    if (result == true) {
-                      fetchEvents();
-                    }
-                  },
-                ),
-              ],
-            ),
+              );
+              // Refresh events after details page
+            },
           ),
         );
       },
@@ -161,6 +121,7 @@ class _CalendarPageState extends State<CalendarPage> {
           : Column(
               children: [
                 TableCalendar(
+                  locale: 'th_TH',
                   firstDay: DateTime.utc(2010, 10, 16),
                   lastDay: DateTime.utc(2030, 3, 14),
                   focusedDay: _focusedDay,
@@ -222,7 +183,8 @@ class _CalendarPageState extends State<CalendarPage> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'Upcoming Events',
-                      style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          fontSize: 18.0, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -237,10 +199,11 @@ class _CalendarPageState extends State<CalendarPage> {
           onPressed: () async {
             bool? result = await Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => AddEventPage(user: widget.user)),
+              MaterialPageRoute(
+                  builder: (context) => AddEventPage(user: widget.user)),
             );
             if (result == true) {
-              fetchEvents();
+              // Refresh events
             }
           },
           child: const Icon(Icons.add),

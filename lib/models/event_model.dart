@@ -1,34 +1,45 @@
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:equatable/equatable.dart';
+import 'user_model.dart';
 
-class Event {
+class Event extends Equatable {
   final String id;
   final String title;
   final String description;
-  final String? imageUrl;
+  final String imageUrl;
   final String createdBy;
   final DateTime date;
+  final DateTime startTime;
+  final DateTime endTime;
   final DateTime? reminderTime;
-  final List<Map<String, String>> joinedUsers;
   final String location;
+  final List<UserModel> participants;
+  final String organizer; // เพิ่มฟิลด์ใหม่
+  final String relatedLink; // เพิ่มฟิลด์ใหม่
+  final String terms; // เพิ่มฟิลด์ใหม่
+  final int availableSeats; // เพิ่มฟิลด์ใหม่
+  final String contactInfo; // เพิ่มฟิลด์ใหม่
+  final String tags; // เพิ่มฟิลด์ใหม่
 
   Event({
     required this.id,
     required this.title,
     required this.description,
-    this.imageUrl,
+    required this.imageUrl,
     required this.createdBy,
     required this.date,
+    required this.startTime,
+    required this.endTime,
     this.reminderTime,
-    List<Map<String, String>>? joinedUsers,
     required this.location,
-  })  : joinedUsers = joinedUsers ?? [],
-        assert(id.isNotEmpty, 'ID cannot be empty'),
-        assert(title.isNotEmpty, 'Title cannot be empty'),
-        assert(description.isNotEmpty, 'Description cannot be empty'),
-        assert(createdBy.isNotEmpty, 'CreatedBy cannot be empty'),
-        assert(location.isNotEmpty, 'Location cannot be empty');
+    required this.participants,
+    required this.organizer,
+    required this.relatedLink,
+    required this.terms,
+    required this.availableSeats,
+    required this.contactInfo,
+    required this.tags,
+  });
 
-  /// Converts Event instance to a Map.
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -37,104 +48,76 @@ class Event {
       'imageUrl': imageUrl,
       'createdBy': createdBy,
       'date': date.toIso8601String(),
+      'startTime': startTime.toIso8601String(),
+      'endTime': endTime.toIso8601String(),
       'reminderTime': reminderTime?.toIso8601String(),
-      'joinedUsers': joinedUsers,
       'location': location,
+      'participants': participants.map((x) => x.toMap()).toList(),
+      'organizer': organizer,
+      'relatedLink': relatedLink,
+      'terms': terms,
+      'availableSeats': availableSeats,
+      'contactInfo': contactInfo,
+      'tags': tags,
     };
   }
 
-  /// Creates an Event instance from a Map.
   factory Event.fromMap(Map<String, dynamic> map) {
-    List<String> missingFields = [];
-    if (!map.containsKey('id')) missingFields.add('id');
-    if (!map.containsKey('title')) missingFields.add('title');
-    if (!map.containsKey('description')) missingFields.add('description');
-    if (!map.containsKey('createdBy')) missingFields.add('createdBy');
-    if (!map.containsKey('date')) missingFields.add('date');
-    if (!map.containsKey('location')) missingFields.add('location');
-
-    if (missingFields.isNotEmpty) {
-      throw ArgumentError(
-          'Missing required field(s): ${missingFields.join(', ')}');
-    }
-
-    try {
-      return Event(
-        id: map['id'],
-        title: map['title'],
-        description: map['description'],
-        imageUrl: map['imageUrl'],
-        createdBy: map['createdBy'],
-        date: DateTime.parse(map['date']),
-        reminderTime: map['reminderTime'] != null
-            ? DateTime.parse(map['reminderTime'])
-            : null,
-        joinedUsers: map['joinedUsers'] != null
-            ? List<Map<String, String>>.from(map['joinedUsers'])
-            : [],
-        location: map['location'],
-      );
-    } catch (e) {
-      throw ArgumentError('Invalid data format in map: $e');
-    }
-  }
-
-  /// Creates a copy of this Event instance with the given fields replaced.
-  Event copyWith({
-    String? id,
-    String? title,
-    String? description,
-    String? imageUrl,
-    String? createdBy,
-    DateTime? date,
-    DateTime? reminderTime,
-    List<Map<String, String>>? joinedUsers,
-    String? location,
-  }) {
     return Event(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      description: description ?? this.description,
-      imageUrl: imageUrl ?? this.imageUrl,
-      createdBy: createdBy ?? this.createdBy,
-      date: date ?? this.date,
-      reminderTime: reminderTime ?? this.reminderTime,
-      joinedUsers: joinedUsers ?? this.joinedUsers,
-      location: location ?? this.location,
+      id: map['id'],
+      title: map['title'],
+      description: map['description'],
+      imageUrl: map['imageUrl'],
+      createdBy: map['createdBy'],
+      date: DateTime.parse(map['date']),
+      startTime: DateTime.parse(map['startTime']),
+      endTime: DateTime.parse(map['endTime']),
+      reminderTime: map['reminderTime'] != null
+          ? DateTime.parse(map['reminderTime'])
+          : null,
+      location: map['location'],
+      participants: List<UserModel>.from(map['participants']?.map((x) => UserModel.fromMap(Map<String, dynamic>.from(x))) ?? const []),
+      organizer: map['organizer'],
+      relatedLink: map['relatedLink'],
+      terms: map['terms'],
+      availableSeats: map['availableSeats'],
+      contactInfo: map['contactInfo'],
+      tags: map['tags'],
     );
   }
 
-  /// Getter to extract user IDs from the joinedUsers list.
-  List<String> get joinedUserIds {
-    return joinedUsers.map((user) => user['userId']!).toList();
+  void addParticipant(UserModel user) {
+    if (!isParticipant(user)) {
+      participants.add(user);
+    }
+  }
+
+  void removeParticipant(UserModel user) {
+    participants.removeWhere((participant) => participant.id == user.id);
+  }
+
+  bool isParticipant(UserModel user) {
+    return participants.any((participant) => participant.id == user.id);
   }
 
   @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-
-    return other is Event &&
-        other.id == id &&
-        other.title == title &&
-        other.description == description &&
-        other.imageUrl == imageUrl &&
-        other.createdBy == createdBy &&
-        other.date == date &&
-        other.reminderTime == reminderTime &&
-        listEquals(other.joinedUsers, joinedUsers) &&
-        other.location == location;
-  }
-
-  @override
-  int get hashCode {
-    return id.hashCode ^
-        title.hashCode ^
-        description.hashCode ^
-        imageUrl.hashCode ^
-        createdBy.hashCode ^
-        date.hashCode ^
-        reminderTime.hashCode ^
-        joinedUsers.hashCode ^
-        location.hashCode;
-  }
+  List<Object?> get props => [
+        id,
+        title,
+        description,
+        imageUrl,
+        createdBy,
+        date,
+        startTime,
+        endTime,
+        reminderTime,
+        location,
+        participants,
+        organizer,
+        relatedLink,
+        terms,
+        availableSeats,
+        contactInfo,
+        tags,
+      ];
 }

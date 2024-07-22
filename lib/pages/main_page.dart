@@ -3,7 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'calendar_page.dart';
 import 'events_page.dart';
 import 'profile_page.dart';
-import '../google_sign_in.dart';
+import '../auth_service.dart';
+import 'package:logging/logging.dart';
 
 class MainPage extends StatefulWidget {
   final User user;
@@ -15,28 +16,58 @@ class MainPage extends StatefulWidget {
 }
 
 class _MainPageState extends State<MainPage> {
+  final Logger _logger = Logger('MainPage');
   int _selectedIndex = 0;
+  final AuthService _authService = AuthService();
 
   late final List<Widget> _widgetOptions;
 
   @override
   void initState() {
     super.initState();
+    _logger.info('Initializing MainPage with user: ${widget.user.email}');
     _widgetOptions = <Widget>[
-      CalendarPage(user: widget.user), // ส่ง user ไปยัง CalendarPage
-      EventsPage(user: widget.user),   // ส่ง user ไปยัง EventsPage (หากจำเป็น)
-      ProfilePage(user: widget.user),  // ส่ง user ไปยัง ProfilePage
+      CalendarPage(user: widget.user, onError: _showErrorDialog),
+      EventsPage(user: widget.user, onError: _showErrorDialog),
+      ProfilePage(user: widget.user, onError: _showErrorDialog),
     ];
   }
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    if (mounted) {
+      setState(() {
+        _logger.info('Tab selected: $index');
+        _selectedIndex = index;
+      });
+    }
+  }
+
+  void _showErrorDialog(String error) {
+    if (mounted) {
+      _logger.severe('Error occurred: $error');
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text('Error'),
+            content: Text('An error occurred: $error'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: Text('OK'),
+              ),
+            ],
+          );
+        },
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    _logger.info('Building MainPage');
     return Scaffold(
       appBar: AppBar(
         title: Text('Flutter Firebase Google Sign-In'),
@@ -44,8 +75,14 @@ class _MainPageState extends State<MainPage> {
           IconButton(
             icon: Icon(Icons.logout),
             onPressed: () async {
-              await signOut();
-              Navigator.pop(context);
+              _logger.info('User is logging out');
+              try {
+                await _authService.signOut(context);
+                _logger.info('User logged out successfully');
+              } catch (e) {
+                _logger.severe('Failed to log out: $e');
+                _showErrorDialog('Failed to log out: $e');
+              }
             },
           ),
         ],
