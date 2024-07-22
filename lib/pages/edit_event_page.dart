@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_picker_web/image_picker_web.dart';
+import 'package:intl/intl.dart';
 import '../models/event_model.dart';
 import '../services/firebase_service.dart';
 import 'dart:io';
@@ -13,7 +14,7 @@ class EditEventPage extends StatefulWidget {
   final User user;
   final Event event;
 
-  EditEventPage({required this.user, required this.event});
+  const EditEventPage({required this.user, required this.event}); // Made const
 
   @override
   _EditEventPageState createState() => _EditEventPageState();
@@ -24,12 +25,41 @@ class _EditEventPageState extends State<EditEventPage> {
   late String _title;
   late String _description;
   late String _location;
+  late String _organizer;
+  late String _relatedLink;
+  late String _terms;
+  late int _availableSeats;
+  late String _contactInfo;
+  late String _tags;
   File? _imageFile;
   Uint8List? _imageBytes;
   late DateTime _selectedDate;
-  TimeOfDay? _selectedTime;
+  TimeOfDay? _selectedStartTime;
+  TimeOfDay? _selectedEndTime;
   String? _imageUrl;
-  late List<Map<String, String>> _joinedUsers; // Correct type for joinedUsers
+  late DateTime _startTime;
+  late DateTime _endTime;
+  bool _isOtherSelected = false; // New state variable
+  String? _otherTag; // New state variable
+
+  final List<String> _tagOptions = [
+    // Made final
+    'การประชุม (Meetings)',
+    'การสัมมนา/การฝึกอบรม (Seminars/Workshops)',
+    'งานเลี้ยง/ปาร์ตี้ (Parties)',
+    'กิจกรรมกีฬา (Sports)',
+    'งานอาสาสมัคร (Volunteering)',
+    'การพบปะทางสังคม (Social Gatherings)',
+    'กิจกรรมครอบครัว (Family Activities)',
+    'การแข่งขัน (Competitions)',
+    'กิจกรรมทางวัฒนธรรม (Cultural Events)',
+    'กิจกรรมการศึกษา (Educational Activities)',
+    'กิจกรรมเพื่อสุขภาพ (Health & Wellness)',
+    'การท่องเที่ยว (Travel/Tours)',
+    'กิจกรรมทางศาสนา (Religious Events)',
+    'การแสดง (Performances)',
+    'อื่นๆ (Others)',
+  ]; // ตัวอย่างแท็ก
 
   @override
   void initState() {
@@ -39,25 +69,41 @@ class _EditEventPageState extends State<EditEventPage> {
     _location = widget.event.location;
     _selectedDate = widget.event.date;
     _imageUrl = widget.event.imageUrl;
-    _selectedTime = widget.event.reminderTime != null
-        ? TimeOfDay.fromDateTime(widget.event.reminderTime!)
-        : null;
-    _joinedUsers = List<Map<String, String>>.from(widget.event.joinedUsers); // Initialize joinedUsers with the correct type
+    _selectedStartTime = TimeOfDay.fromDateTime(widget.event.startTime);
+    _selectedEndTime = TimeOfDay.fromDateTime(widget.event.endTime);
+    _startTime = widget.event.startTime;
+    _endTime = widget.event.endTime;
+    _organizer = widget.event.organizer;
+    _relatedLink = widget.event.relatedLink;
+    _terms = widget.event.terms;
+    _availableSeats = widget.event.availableSeats;
+    _contactInfo = widget.event.contactInfo;
+    _tags = widget.event.tags;
+
+    if (_tags == 'อื่นๆ (Others)') {
+      _isOtherSelected = true;
+      _otherTag = widget.event.tags;
+    }
   }
 
   Future<void> _pickImage() async {
-    if (kIsWeb) {
-      final pickedBytes = await ImagePickerWeb.getImageAsBytes();
-      setState(() {
-        _imageBytes = pickedBytes;
-        _imageFile = null;
-      });
-    } else {
-      final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
-      setState(() {
-        _imageFile = pickedFile != null ? File(pickedFile.path) : null;
-        _imageBytes = null;
-      });
+    try {
+      if (kIsWeb) {
+        final pickedBytes = await ImagePickerWeb.getImageAsBytes();
+        setState(() {
+          _imageBytes = pickedBytes;
+          _imageFile = null;
+        });
+      } else {
+        final pickedFile =
+            await ImagePicker().pickImage(source: ImageSource.gallery);
+        setState(() {
+          _imageFile = pickedFile != null ? File(pickedFile.path) : null;
+          _imageBytes = null;
+        });
+      }
+    } catch (e) {
+      _showSnackBar('Error picking image: $e');
     }
   }
 
@@ -75,14 +121,20 @@ class _EditEventPageState extends State<EditEventPage> {
     }
   }
 
-  Future<void> _pickTime(BuildContext context) async {
+  Future<void> _pickTime(BuildContext context, bool isStartTime) async {
     final pickedTime = await showTimePicker(
       context: context,
-      initialTime: _selectedTime ?? TimeOfDay.now(),
+      initialTime: isStartTime
+          ? (_selectedStartTime ?? TimeOfDay.now())
+          : (_selectedEndTime ?? TimeOfDay.now()),
     );
     if (pickedTime != null) {
       setState(() {
-        _selectedTime = pickedTime;
+        if (isStartTime) {
+          _selectedStartTime = pickedTime;
+        } else {
+          _selectedEndTime = pickedTime;
+        }
       });
     }
   }
@@ -103,8 +155,7 @@ class _EditEventPageState extends State<EditEventPage> {
           }
           _imageUrl = await storageRef.getDownloadURL();
         } catch (e) {
-          print('Error uploading image: $e');
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error uploading image')));
+          _showSnackBar('Error uploading image: $e');
           return;
         }
       }
@@ -114,131 +165,287 @@ class _EditEventPageState extends State<EditEventPage> {
         title: _title,
         description: _description,
         location: _location,
-        imageUrl: _imageUrl,
+        imageUrl: _imageUrl ?? '', // Handle null case here
         createdBy: widget.user.uid,
         date: _selectedDate,
-        reminderTime: _selectedTime != null
+        reminderTime: _selectedStartTime != null
             ? DateTime(
                 _selectedDate.year,
                 _selectedDate.month,
                 _selectedDate.day,
-                _selectedTime!.hour,
-                _selectedTime!.minute,
+                _selectedStartTime!.hour,
+                _selectedStartTime!.minute,
               )
             : null,
-        joinedUsers: _joinedUsers,
+        startTime: DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+          _selectedStartTime?.hour ?? 0,
+          _selectedStartTime?.minute ?? 0,
+        ),
+        endTime: DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+          _selectedEndTime?.hour ?? 0,
+          _selectedEndTime?.minute ?? 0,
+        ),
+        participants:
+            widget.event.participants, // Provide the existing participants
+        organizer: _organizer,
+        relatedLink: _relatedLink,
+        terms: _terms,
+        availableSeats: _availableSeats,
+        contactInfo: _contactInfo,
+        tags: _isOtherSelected ? _otherTag! : _tags,
       );
 
       try {
         await FirebaseService.updateEvent(updatedEvent);
-        Navigator.pop(context, true);
+        Navigator.pop(context, true); // Pass a true flag to indicate success
       } catch (e) {
-        print('Error updating event: $e');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating event')));
+        _showSnackBar('Error updating event: $e');
       }
     }
   }
 
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Edit Event'),
-      ),
+      appBar: AppBar(title: const Text('Edit Event')), // Made const
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(16.0),
+        padding: EdgeInsets.all(isMobile ? 8.0 : 16.0),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextFormField(
-                initialValue: _title,
-                decoration: InputDecoration(labelText: 'Title'),
-                onSaved: (value) {
-                  _title = value!;
-                },
-                validator: (value) {
-                  if (value!.isEmpty) {
-                    return 'Please enter a title';
-                  }
-                  return null;
-                },
-              ),
-              TextFormField(
-                initialValue: _description,
-                decoration: InputDecoration(labelText: 'Description'),
-                onSaved: (value) {
-                  _description = value!;
-                },
-                validator: (value) {
-                  if (value!.isEmpty) {
-                    return 'Please enter a description';
-                  }
-                  return null;
-                },
-              ),
-              TextFormField(
-                initialValue: _location,
-                decoration: InputDecoration(labelText: 'Location'),
-                onSaved: (value) {
-                  _location = value!;
-                },
-                validator: (value) {
-                  if (value!.isEmpty) {
-                    return 'Please enter a location';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 20),
-              Row(
-                children: [
-                  Text("Date: ${_selectedDate.toLocal()}".split(' ')[0]),
-                  SizedBox(width: 20.0),
-                  ElevatedButton(
-                    onPressed: () => _pickDate(context),
-                    child: Text('Select Date'),
-                  ),
-                ],
-              ),
-              SizedBox(height: 20),
-              Row(
-                children: [
-                  Text("Time: ${_selectedTime?.format(context) ?? 'Not set'}"),
-                  SizedBox(width: 20.0),
-                  ElevatedButton(
-                    onPressed: () => _pickTime(context),
-                    child: Text('Select Time'),
-                  ),
-                ],
-              ),
-              SizedBox(height: 20),
-              if (kIsWeb)
-                _imageBytes == null
-                    ? (_imageUrl != null
-                        ? Image.network(_imageUrl!)
-                        : Text('No image selected'))
-                    : Image.memory(_imageBytes!)
-              else
-                _imageFile == null
-                    ? (_imageUrl != null
-                        ? Image.network(_imageUrl!)
-                        : Text('No image selected'))
-                    : Image.file(_imageFile!),
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _pickImage,
-                child: Text('Pick Image'),
-              ),
-              SizedBox(height: 20),
+              _buildCard('Event Details', [
+                _buildTextFormField('Title', _title,
+                    (value) => _title = value ?? '', 'Please enter a title'),
+                _buildTextFormField(
+                    'Description',
+                    _description,
+                    (value) => _description = value ?? '',
+                    'Please enter a description'),
+                _buildTextFormField(
+                    'Location',
+                    _location,
+                    (value) => _location = value ?? '',
+                    'Please enter a location'),
+                _buildTextFormField(
+                    'Organizer',
+                    _organizer,
+                    (value) => _organizer = value ?? '',
+                    'Please enter an organizer'),
+                _buildNumericFormField(
+                    'Available Seats',
+                    _availableSeats.toString(),
+                    (value) =>
+                        _availableSeats = int.tryParse(value ?? '0') ?? 0,
+                    'Please enter a valid number'),
+              ]),
+              _buildCard('Details Others', [
+                _buildTextFormField('Terms', _terms,
+                    (value) => _terms = value ?? '', 'Please enter terms'),
+                _buildTextFormField(
+                    'Contact Info',
+                    _contactInfo,
+                    (value) => _contactInfo = value ?? '',
+                    'Please enter contact info'),
+                _buildTextFormField(
+                    'Related Link',
+                    _relatedLink,
+                    (value) => _relatedLink = value ?? '',
+                    'Please enter related link'),
+              ]),
+              _buildCard('Event Schedule', [
+                _buildDatePicker(context),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildTimePicker(context, 'Start Time', true),
+                    ),
+                    SizedBox(width: isMobile ? 10 : 20),
+                    Expanded(
+                      child: _buildTimePicker(context, 'End Time', false),
+                    ),
+                  ],
+                ),
+              ]),
+              _buildCard('Tags', [
+                _buildDropdownFormField(
+                    'Tags', _tags, (value) => _tags = value ?? '', _tagOptions),
+                if (_isOtherSelected)
+                  _buildTextFormField(
+                      'Other Tag',
+                      _otherTag ?? '',
+                      (value) => _otherTag = value,
+                      'Please enter other tag'),
+              ]),
+              _buildCard('Image', [
+                const Text(
+                  // Made const
+                  'Event Image',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10), // Made const
+                _buildImagePreview(),
+                TextButton.icon(
+                  icon: const Icon(Icons.image), // Made const
+                  label: const Text('Change Event Image'), // Made const
+                  onPressed: _pickImage,
+                ),
+              ]),
+              const SizedBox(height: 16), // Made const
               ElevatedButton(
                 onPressed: _submit,
-                child: Text('Submit'),
+                child: const Text('Save Changes'), // Made const
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildCard(String title, List<Widget> children) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 10.0), // Made const
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0), // Made const
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold)), // Made const
+            const SizedBox(height: 10), // Made const
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextFormField(String label, String initialValue,
+      FormFieldSetter<String> onSaved, String validatorText) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0), // Made const
+      child: TextFormField(
+        initialValue: initialValue,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(), // Made const
+        ),
+        onSaved: onSaved,
+        validator: (value) => value?.isEmpty ?? true ? validatorText : null,
+      ),
+    );
+  }
+
+  Widget _buildNumericFormField(String label, String initialValue,
+      FormFieldSetter<String> onSaved, String validatorText) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0), // Made const
+      child: TextFormField(
+        initialValue: initialValue,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(), // Made const
+        ),
+        onSaved: onSaved,
+        validator: (value) =>
+            value?.isEmpty ?? true || int.tryParse(value ?? '') == null
+                ? validatorText
+                : null,
+      ),
+    );
+  }
+
+  Widget _buildDatePicker(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Selected Date: ${DateFormat('yyyy-MM-dd').format(_selectedDate)}',
+            style: const TextStyle(fontSize: 16), // Made const
+          ),
+        ),
+        TextButton.icon(
+          icon: const Icon(Icons.calendar_today), // Made const
+          label: const Text('Select Date'), // Made const
+          onPressed: () => _pickDate(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimePicker(
+      BuildContext context, String label, bool isStartTime) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label +
+                ': ${isStartTime ? _selectedStartTime?.format(context) : _selectedEndTime?.format(context) ?? 'Not selected'}',
+            style: const TextStyle(fontSize: 16), // Made const
+          ),
+        ),
+        TextButton.icon(
+          icon: const Icon(Icons.access_time), // Made const
+          label: const Text('Select'), // Made const
+          onPressed: () => _pickTime(context, isStartTime),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImagePreview() {
+    return _imageBytes != null
+        ? Image.memory(_imageBytes!)
+        : _imageFile != null
+            ? Image.file(_imageFile!)
+            : _imageUrl != null
+                ? Image.network(_imageUrl!)
+                : Container();
+  }
+
+  Widget _buildDropdownFormField(String label, String initialValue,
+      FormFieldSetter<String> onSaved, List<String> options) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0), // Made const
+      child: DropdownButtonFormField<String>(
+        value: options.contains(initialValue) ? initialValue : null,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(), // Made const
+        ),
+        items: options.map((String value) {
+          return DropdownMenuItem<String>(
+            value: value,
+            child: Text(value),
+          );
+        }).toList(),
+        onChanged: (value) {
+          setState(() {
+            _tags = value ?? '';
+            _isOtherSelected = value == 'อื่นๆ (Others)';
+          });
+        },
+        onSaved: onSaved,
+        validator: (value) => value == null ? 'Please select a tag' : null,
       ),
     );
   }

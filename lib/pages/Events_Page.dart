@@ -1,92 +1,70 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import '../models/event_model.dart';
 import '../models/user_model.dart';
 import '../services/firebase_service.dart';
+import 'package:logging/logging.dart';
 import 'event_details_page.dart';
-import 'edit_event_page.dart';
+import 'countdown_timer.dart'; // เพิ่ม CountdownTimer
 
 class EventsPage extends StatefulWidget {
   final User user;
+  final Function(String) onError;
 
-  EventsPage({required this.user});
+  const EventsPage({
+    Key? key,
+    required this.user,
+    required this.onError,
+  }) : super(key: key);
 
   @override
-  _EventsPageState createState() => _EventsPageState();
+  EventsPageState createState() => EventsPageState();
 }
 
-class _EventsPageState extends State<EventsPage> {
+class EventsPageState extends State<EventsPage> {
+  final Logger _logger = Logger('EventsPage');
   List<Event> events = [];
   List<Event> filteredEvents = [];
   String selectedFilter = 'All';
   String selectedSortOrder = 'Ascending';
-  bool isLoading = false;
+  int totalParticipants = 0;
 
   @override
   void initState() {
     super.initState();
-    fetchEvents();
-  }
-
-  /// Fetches events from Firebase and applies the selected filters and sorting
-  Future<void> fetchEvents() async {
-    setState(() {
-      isLoading = true;
-    });
-
-    try {
-      List<Event> fetchedEvents = await FirebaseService.getEvents();
-
-      // Check if the user has joined each event
-      for (var event in fetchedEvents) {
-        bool alreadyJoined =
-            await FirebaseService.checkIfUserJoined(widget.user.uid, event.id);
-        if (alreadyJoined) {
-          UserModel? userModel = await FirebaseService.getUserDetails(
-              widget.user.uid,
-              widget.user.displayName ?? 'Unknown User',
-              widget.user.email ?? 'unknown@example.com');
-
-          if (userModel != null) {
-            event.joinedUsers.add({
-              'id': userModel.id,
-              'fullName': userModel.fullName,
-              'email': userModel.email,
-            });
-          }
-        }
-      }
-
+    initializeDateFormatting('th_TH', null);
+    FirebaseService.getEventsStream().listen((data) {
       setState(() {
-        events = fetchedEvents;
+        events = data;
+        calculateTotalParticipants();
         applyFiltersAndSorting();
       });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to load events')),
-      );
-    } finally {
-      setState(() {
-        isLoading = false;
-      });
-    }
+    });
   }
 
-  /// Applies the selected filter and sorting to the list of events
+  void calculateTotalParticipants() {
+    totalParticipants =
+        events.fold(0, (sum, event) => sum + event.participants.length);
+  }
+
   void applyFiltersAndSorting() {
-    List<Event> tempEvents = events;
+    _logger.info(
+        'Applying filters and sorting with filter: $selectedFilter and sort order: $selectedSortOrder');
+    List<Event> tempEvents = List.from(events);
 
     if (selectedFilter == 'Today') {
-      tempEvents = tempEvents.where((event) {
-        return event.date.day == DateTime.now().day &&
-            event.date.month == DateTime.now().month &&
-            event.date.year == DateTime.now().year;
-      }).toList();
+      tempEvents = tempEvents.where((event) => isToday(event.date)).toList();
     } else if (selectedFilter == 'Upcoming') {
-      tempEvents = tempEvents.where((event) {
-        return event.date.isAfter(DateTime.now());
-      }).toList();
+      tempEvents = tempEvents
+          .where((event) => event.date.isAfter(DateTime.now()))
+          .toList();
+    } else if (selectedFilter == 'Joined') {
+      tempEvents = tempEvents
+          .where((event) => event.isParticipant(_buildUserModel()))
+          .toList();
     }
 
     tempEvents.sort((a, b) {
@@ -100,79 +78,48 @@ class _EventsPageState extends State<EventsPage> {
     });
   }
 
-  /// Sets the selected filter and applies the filter and sorting
-  void _selectFilter(String filter) {
-    setState(() {
-      selectedFilter = filter;
-      applyFiltersAndSorting();
-    });
+  UserModel _buildUserModel() {
+    return UserModel(
+      id: widget.user.uid,
+      fullName: widget.user.displayName ?? 'Unknown User',
+      email: widget.user.email!,
+    );
   }
 
-  /// Sets the selected sort order and applies the filter and sorting
-  void _selectSortOrder(String order) {
-    setState(() {
-      selectedSortOrder = order;
-      applyFiltersAndSorting();
-    });
+  bool isToday(DateTime date) {
+    final now = DateTime.now();
+    return date.day == now.day &&
+        date.month == now.month &&
+        date.year == now.year;
   }
 
-  /// Toggles the join status for the given event
-  Future<void> _toggleJoin(Event event) async {
-    setState(() {
-      isLoading = true;
-    });
-
+  Future<void> _toggleEventParticipation(Event event) async {
     try {
-      bool isAttending =
-          event.joinedUsers.any((user) => user['id'] == widget.user.uid);
-
-      if (isAttending) {
-        await FirebaseService.leaveEvent(widget.user.uid, event.id);
-        setState(() {
-          event.joinedUsers
-              .removeWhere((user) => user['id'] == widget.user.uid);
-        });
+      final user = _buildUserModel();
+      if (event.isParticipant(user)) {
+        await FirebaseService.leaveEvent(event.id, user);
       } else {
-        bool alreadyJoined =
-            await FirebaseService.checkIfUserJoined(widget.user.uid, event.id);
-        if (alreadyJoined) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('You have already joined this event')),
-          );
-        } else {
-          await FirebaseService.joinEvent(widget.user.uid, event.id);
-
-          // Assuming you have user's full name and email stored in widget.user
-          UserModel? userModel = await FirebaseService.getUserDetails(
-              widget.user.uid,
-              widget.user.displayName ??
-                  'Unknown User', // Replace with actual full name
-              widget.user.email ??
-                  'unknown@example.com' // Replace with actual email
-              );
-
-          if (userModel != null) {
-            setState(() {
-              event.joinedUsers.add({
-                'id': userModel.id,
-                'fullName': userModel.fullName,
-                'email': userModel.email,
-              });
-            });
-          }
+        if (event.participants.length >= event.availableSeats) {
+          widget.onError('No available seats left for this event');
+          return;
         }
+        await FirebaseService.joinEvent(event.id, user);
       }
-      // Applying filters and sorting after the update
-      applyFiltersAndSorting();
+      calculateTotalParticipants();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to update event status')),
-      );
-    } finally {
-      setState(() {
-        isLoading = false;
-      });
+      widget.onError(e.toString());
+      _logger.severe(
+          'Error toggling event participation for event ${event.id} and user ${widget.user.uid}: $e');
     }
+  }
+
+  void _navigateToEventDetails(Event event) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EventDetailsPage(event: event),
+      ),
+    );
   }
 
   @override
@@ -182,154 +129,176 @@ class _EventsPageState extends State<EventsPage> {
         title: const Text('Events'),
         actions: [
           PopupMenuButton<String>(
-            onSelected: _selectFilter,
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'All', child: Text('All Events')),
-              const PopupMenuItem(
-                  value: 'Today', child: Text('Today\'s Events')),
-              const PopupMenuItem(
-                  value: 'Upcoming', child: Text('Upcoming Events')),
+            onSelected: (String result) {
+              setState(() {
+                selectedFilter = result;
+                applyFiltersAndSorting();
+              });
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'All',
+                child: Text('All'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'Today',
+                child: Text('Today'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'Upcoming',
+                child: Text('Upcoming'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'Joined',
+                child: Text('Joined'),
+              ),
             ],
-            icon: const Icon(Icons.filter_list),
           ),
           PopupMenuButton<String>(
-            onSelected: _selectSortOrder,
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'Ascending', child: Text('Ascending')),
-              const PopupMenuItem(
-                  value: 'Descending', child: Text('Descending')),
+            onSelected: (String result) {
+              setState(() {
+                selectedSortOrder = result;
+                applyFiltersAndSorting();
+              });
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'Ascending',
+                child: Text('Ascending'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'Descending',
+                child: Text('Descending'),
+              ),
             ],
-            icon: const Icon(Icons.sort),
           ),
         ],
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              itemCount: filteredEvents.length,
-              itemBuilder: (context, index) {
-                return EventCard(
-                  event: filteredEvents[index],
-                  user: widget.user,
-                  onJoinToggle: _toggleJoin,
-                );
-              },
-            ),
-    );
-  }
-}
-
-class EventCard extends StatelessWidget {
-  final Event event;
-  final User user;
-  final Future<void> Function(Event) onJoinToggle;
-
-  const EventCard({
-    required this.event,
-    required this.user,
-    required this.onJoinToggle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    bool isAttending =
-        event.joinedUsers.any((joinedUser) => joinedUser['id'] == user.uid);
-
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12.0),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (event.imageUrl != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12.0),
-                child: CachedNetworkImage(
-                  imageUrl: event.imageUrl!,
-                  height: 200,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) =>
-                      const Center(child: CircularProgressIndicator()),
-                  errorWidget: (context, url, error) => const Icon(Icons.error),
+      body: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: ListView.builder(
+          itemCount: filteredEvents.length,
+          itemBuilder: (context, index) {
+            final event = filteredEvents[index];
+            final isEventFull = event.participants.length >= event.availableSeats;
+            return GestureDetector(
+              onTap: () => _navigateToEventDetails(event),
+              child: Card(
+                elevation: 5,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              ),
-            const SizedBox(height: 12.0),
-            Text(
-              event.title,
-              style: const TextStyle(
-                fontSize: 20.0,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8.0),
-            Text(
-              event.description,
-              style: const TextStyle(fontSize: 16.0),
-            ),
-            const SizedBox(height: 8.0),
-            Row(
-              children: [
-                const Icon(Icons.calendar_today, size: 16.0),
-                const SizedBox(width: 4.0),
-                Text(
-                  event.date.toLocal().toString(),
-                  style: const TextStyle(fontSize: 16.0),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8.0),
-            Row(
-              children: [
-                const Icon(Icons.location_on, size: 16.0),
-                const SizedBox(width: 4.0),
-                Text(
-                  event.location,
-                  style: const TextStyle(fontSize: 16.0),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12.0),
-            if (event.joinedUsers.isNotEmpty)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Participants:',
-                    style: TextStyle(
-                      fontSize: 16.0,
-                      fontWeight: FontWeight.bold,
-                    ),
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                child: Padding(
+                  padding: const EdgeInsets.all(10.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CachedNetworkImage(
+                            imageUrl: event.imageUrl,
+                            placeholder: (context, url) =>
+                                const CircularProgressIndicator(),
+                            errorWidget: (context, url, error) =>
+                                const Icon(Icons.error),
+                            imageBuilder: (context, imageProvider) => Container(
+                              width: 90,
+                              height: 90,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                image: DecorationImage(
+                                  image: imageProvider,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  event.title,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  DateFormat.yMMMMd('th_TH').format(event.date),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  event.description,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                // เพิ่ม Countdown Timer ที่นี่
+                                CountdownTimer(eventTime: event.date),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Divider(color: Colors.grey.shade300),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          ElevatedButton(
+                            onPressed: !isEventFull || event.isParticipant(_buildUserModel())
+                                ? () => _toggleEventParticipation(event)
+                                : null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: event.isParticipant(_buildUserModel())
+                                  ? Colors.green
+                                  : Colors.blue,
+                            ),
+                            child: Text(event.isParticipant(_buildUserModel())
+                                ? 'Joined'
+                                : 'Join'),
+                          ),
+                          if (event.isParticipant(_buildUserModel()))
+                            ElevatedButton(
+                              onPressed: () => _toggleEventParticipation(event),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                              ),
+                              child: const Text('Cancel'),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Available Seats: ${event.availableSeats - event.participants.length}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isEventFull ? Colors.red : Colors.black,
+                          ),
+                          textAlign: TextAlign.left,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8.0),
-                  for (var joinedUser in event.joinedUsers.take(3))
-                    Text(
-                      '${joinedUser['fullName']} (${joinedUser['email']})',
-                      style: const TextStyle(fontSize: 16.0),
-                    ),
-                  if (event.joinedUsers.length > 3)
-                    Text(
-                      'and ${event.joinedUsers.length - 3} more...',
-                      style: const TextStyle(
-                          fontSize: 16.0, fontStyle: FontStyle.italic),
-                    ),
-                  const SizedBox(height: 8.0),
-                  Text(
-                    'Total Participants: ${event.joinedUsers.length}',
-                    style: const TextStyle(fontSize: 16.0),
-                  ),
-                ],
+                ),
               ),
-            const SizedBox(height: 12.0),
-            ElevatedButton(
-              onPressed: () => onJoinToggle(event),
-              child: Text(isAttending ? 'Leave Event' : 'Join Event'),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
