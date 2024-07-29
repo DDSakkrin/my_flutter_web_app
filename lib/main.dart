@@ -9,94 +9,26 @@ import 'auth_service.dart';
 import 'pages/main_page.dart';
 import 'package:logging/logging.dart';
 
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-final FirebaseMessaging firebaseMessaging = FirebaseMessaging.instance;
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await _initializeFirebase();
-  _setupLogging();
-  await _initializeLocalNotifications();
-  await _initializeFCM();
-  runApp(MyApp());
-}
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
-Future<void> _initializeFirebase() async {
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    print('Firebase initialization successful');
-  } catch (e) {
-    print('Firebase initialization error: $e');
-  }
-}
+  // Initialize local notifications
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
 
-void _setupLogging() {
-  Logger.root.level = Level.ALL;
-  Logger.root.onRecord.listen((LogRecord rec) {
-    print('${rec.level.name}: ${rec.time}: ${rec.message}');
-  });
-}
-
-Future<void> _initializeLocalNotifications() async {
-  const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
   const InitializationSettings initializationSettings = InitializationSettings(
     android: initializationSettingsAndroid,
   );
-  try {
-    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
-    print('Local notifications initialized successfully');
-  } catch (e) {
-    print('Local notifications initialization error: $e');
-  }
-}
 
-Future<void> _initializeFCM() async {
-  try {
-    await firebaseMessaging.requestPermission();
-    String? token = await firebaseMessaging.getToken();
-    print('FCM Token: $token');
-    
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      print('Received a message in the foreground!');
-      _showNotification(message);
-    });
+  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
 
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    
-    print('FCM initialized successfully');
-  } catch (e) {
-    print('FCM initialization error: $e');
-  }
-}
-
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  _showNotification(message);
-}
-
-void _showNotification(RemoteMessage message) {
-  const AndroidNotificationDetails androidPlatformChannelSpecifics = AndroidNotificationDetails(
-    'high_importance_channel',
-    'High Importance Notifications',
-    channelDescription: 'This channel is used for important notifications.',
-    importance: Importance.max,
-    priority: Priority.high,
-    ticker: 'ticker',
-  );
-
-  const NotificationDetails platformChannelSpecifics = NotificationDetails(
-    android: androidPlatformChannelSpecifics,
-  );
-
-  flutterLocalNotificationsPlugin.show(
-    message.hashCode,
-    message.notification?.title,
-    message.notification?.body,
-    platformChannelSpecifics,
-    payload: 'item x',
-  );
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {

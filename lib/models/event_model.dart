@@ -12,13 +12,6 @@ class Event extends Equatable {
   final DateTime endTime;
   final DateTime? reminderTime;
   final String location;
-  final List<UserModel> participants;
-  final String organizer; // New field
-  final String relatedLink; // New field
-  final String terms; // New field
-  final int availableSeats; // New field
-  final String contactInfo; // New field
-  final String tags; // New field
 
   Event({
     required this.id,
@@ -63,39 +56,63 @@ class Event extends Equatable {
   }
 
   factory Event.fromMap(Map<String, dynamic> map) {
-    return Event(
-      id: map['id'],
-      title: map['title'],
-      description: map['description'],
-      imageUrl: map['imageUrl'],
-      createdBy: map['createdBy'],
-      date: DateTime.parse(map['date']),
-      startTime: DateTime.parse(map['startTime']),
-      endTime: DateTime.parse(map['endTime']),
-      reminderTime: map['reminderTime'] != null
-          ? DateTime.parse(map['reminderTime'])
-          : null,
-      location: map['location'],
-      participants: List<UserModel>.from(
-        map['participants']?.map((x) => UserModel.fromMap(Map<String, dynamic>.from(x))) ?? const [],
-      ),
-      organizer: map['organizer'],
-      relatedLink: map['relatedLink'],
-      terms: map['terms'],
-      availableSeats: map['availableSeats'],
-      contactInfo: map['contactInfo'],
-      tags: map['tags'],
-    );
-  }
+    List<String> missingFields = [];
+    if (!map.containsKey('id')) missingFields.add('id');
+    if (!map.containsKey('title')) missingFields.add('title');
+    if (!map.containsKey('description')) missingFields.add('description');
+    if (!map.containsKey('createdBy')) missingFields.add('createdBy');
+    if (!map.containsKey('date')) missingFields.add('date');
+    if (!map.containsKey('location')) missingFields.add('location');
 
-  void addParticipant(UserModel user) {
-    if (!isParticipant(user)) {
-      participants.add(user);
+    if (missingFields.isNotEmpty) {
+      throw ArgumentError(
+          'Missing required field(s): ${missingFields.join(', ')}');
+    }
+
+    try {
+      return Event(
+        id: map['id'],
+        title: map['title'],
+        description: map['description'],
+        imageUrl: map['imageUrl'],
+        createdBy: map['createdBy'],
+        date: DateTime.parse(map['date']),
+        reminderTime: map['reminderTime'] != null
+            ? DateTime.parse(map['reminderTime'])
+            : null,
+        joinedUsers: map['joinedUsers'] != null
+            ? List<Map<String, String>>.from(map['joinedUsers'])
+            : [],
+        location: map['location'],
+      );
+    } catch (e) {
+      throw ArgumentError('Invalid data format in map: $e');
     }
   }
 
-  void removeParticipant(UserModel user) {
-    participants.removeWhere((participant) => participant.id == user.id);
+  /// Creates a copy of this Event instance with the given fields replaced.
+  Event copyWith({
+    String? id,
+    String? title,
+    String? description,
+    String? imageUrl,
+    String? createdBy,
+    DateTime? date,
+    DateTime? reminderTime,
+    List<Map<String, String>>? joinedUsers,
+    String? location,
+  }) {
+    return Event(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      imageUrl: imageUrl ?? this.imageUrl,
+      createdBy: createdBy ?? this.createdBy,
+      date: date ?? this.date,
+      reminderTime: reminderTime ?? this.reminderTime,
+      joinedUsers: joinedUsers ?? this.joinedUsers,
+      location: location ?? this.location,
+    );
   }
 
   bool isParticipant(UserModel user) {

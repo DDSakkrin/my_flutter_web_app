@@ -8,7 +8,7 @@ import '../models/user_model.dart';
 import '../services/firebase_service.dart';
 import 'package:logging/logging.dart';
 import 'event_details_page.dart';
-import 'countdown_timer.dart'; // เพิ่ม CountdownTimer
+import 'edit_event_page.dart';
 
 class EventsPage extends StatefulWidget {
   final User user;
@@ -42,35 +42,31 @@ class EventsPageState extends State<EventsPage> {
         calculateTotalParticipants();
         applyFiltersAndSorting();
       });
-    });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load events')),
+      );
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
   }
 
-  void calculateTotalParticipants() {
-    totalParticipants =
-        events.fold(0, (sum, event) => sum + event.participants.length);
-  }
-
+  /// Applies the selected filter and sorting to the list of events
   void applyFiltersAndSorting() {
-    _logger.info(
-        'Applying filters and sorting with filter: $selectedFilter and sort order: $selectedSortOrder');
-    List<Event> tempEvents = List.from(events);
+    List<Event> tempEvents = events;
 
     if (selectedFilter == 'Today') {
       tempEvents = tempEvents.where((event) => isToday(event.date)).toList();
     } else if (selectedFilter == 'Upcoming') {
-      tempEvents = tempEvents
-          .where((event) => event.date.isAfter(DateTime.now()))
-          .toList();
-    } else if (selectedFilter == 'Joined') {
-      tempEvents = tempEvents
-          .where((event) => event.isParticipant(_buildUserModel()))
-          .toList();
+      tempEvents = tempEvents.where((event) {
+        return event.date.isAfter(DateTime.now());
+      }).toList();
     }
 
     tempEvents.sort((a, b) {
-      return selectedSortOrder == 'Ascending'
-          ? a.date.compareTo(b.date)
-          : b.date.compareTo(a.date);
+      return selectedSortOrder == 'Ascending' ? a.date.compareTo(b.date) : b.date.compareTo(a.date);
     });
 
     setState(() {
@@ -86,18 +82,30 @@ class EventsPageState extends State<EventsPage> {
     );
   }
 
-  bool isToday(DateTime date) {
-    final now = DateTime.now();
-    return date.day == now.day &&
-        date.month == now.month &&
-        date.year == now.year;
+  /// Sets the selected sort order and applies the filter and sorting
+  void _selectSortOrder(String order) {
+    setState(() {
+      selectedSortOrder = order;
+      applyFiltersAndSorting();
+    });
   }
 
-  Future<void> _toggleEventParticipation(Event event) async {
+  /// Toggles the join status for the given event
+  Future<void> _toggleJoin(Event event) async {
+    setState(() {
+      isLoading = true;
+    });
+
     try {
-      final user = _buildUserModel();
-      if (event.isParticipant(user)) {
-        await FirebaseService.leaveEvent(event.id, user);
+      bool isAttending =
+          event.joinedUsers.any((user) => user['id'] == widget.user.uid);
+
+      if (isAttending) {
+        await FirebaseService.leaveEvent(widget.user.uid, event.id);
+        setState(() {
+          event.joinedUsers
+              .removeWhere((user) => user['id'] == widget.user.uid);
+        });
       } else {
         if (event.participants.length >= event.availableSeats) {
           widget.onError('No available seats left for this event');
@@ -107,19 +115,14 @@ class EventsPageState extends State<EventsPage> {
       }
       calculateTotalParticipants();
     } catch (e) {
-      widget.onError(e.toString());
-      _logger.severe(
-          'Error toggling event participation for event ${event.id} and user ${widget.user.uid}: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update event status')),
+      );
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
     }
-  }
-
-  void _navigateToEventDetails(Event event) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => EventDetailsPage(event: event),
-      ),
-    );
   }
 
   @override
@@ -174,131 +177,133 @@ class EventsPageState extends State<EventsPage> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: ListView.builder(
-          itemCount: filteredEvents.length,
-          itemBuilder: (context, index) {
-            final event = filteredEvents[index];
-            final isEventFull = event.participants.length >= event.availableSeats;
-            return GestureDetector(
-              onTap: () => _navigateToEventDetails(event),
-              child: Card(
-                elevation: 5,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                child: Padding(
-                  padding: const EdgeInsets.all(10.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          CachedNetworkImage(
-                            imageUrl: event.imageUrl,
-                            placeholder: (context, url) =>
-                                const CircularProgressIndicator(),
-                            errorWidget: (context, url, error) =>
-                                const Icon(Icons.error),
-                            imageBuilder: (context, imageProvider) => Container(
-                              width: 90,
-                              height: 90,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                image: DecorationImage(
-                                  image: imageProvider,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  event.title,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                  ),
-                                ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  DateFormat.yMMMMd('th_TH').format(event.date),
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  event.description,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                const SizedBox(height: 5),
-                                // เพิ่ม Countdown Timer ที่นี่
-                                CountdownTimer(eventTime: event.date),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Divider(color: Colors.grey.shade300),
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          ElevatedButton(
-                            onPressed: !isEventFull || event.isParticipant(_buildUserModel())
-                                ? () => _toggleEventParticipation(event)
-                                : null,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: event.isParticipant(_buildUserModel())
-                                  ? Colors.green
-                                  : Colors.blue,
-                            ),
-                            child: Text(event.isParticipant(_buildUserModel())
-                                ? 'Joined'
-                                : 'Join'),
-                          ),
-                          if (event.isParticipant(_buildUserModel()))
-                            ElevatedButton(
-                              onPressed: () => _toggleEventParticipation(event),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red,
-                              ),
-                              child: const Text('Cancel'),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Available Seats: ${event.availableSeats - event.participants.length}',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: isEventFull ? Colors.red : Colors.black,
-                          ),
-                          textAlign: TextAlign.left,
-                        ),
-                      ),
-                    ],
-                  ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView.builder(
+              itemCount: filteredEvents.length,
+              itemBuilder: (context, index) {
+                return EventCard(
+                  event: filteredEvents[index],
+                  user: widget.user,
+                  onJoinToggle: _toggleJoin,
+                );
+              },
+            ),
+    );
+  }
+}
+
+class EventCard extends StatelessWidget {
+  final Event event;
+  final User user;
+  final Future<void> Function(Event) onJoinToggle;
+
+  const EventCard({
+    required this.event,
+    required this.user,
+    required this.onJoinToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    bool isAttending =
+        event.joinedUsers.any((joinedUser) => joinedUser['id'] == user.uid);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12.0),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (event.imageUrl != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12.0),
+                child: CachedNetworkImage(
+                  imageUrl: event.imageUrl!,
+                  height: 200,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) =>
+                      const Center(child: CircularProgressIndicator()),
+                  errorWidget: (context, url, error) => const Icon(Icons.error),
                 ),
               ),
-            );
-          },
+            const SizedBox(height: 12.0),
+            Text(
+              event.title,
+              style: const TextStyle(
+                fontSize: 20.0,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8.0),
+            Text(
+              event.description,
+              style: const TextStyle(fontSize: 16.0),
+            ),
+            const SizedBox(height: 8.0),
+            Row(
+              children: [
+                const Icon(Icons.calendar_today, size: 16.0),
+                const SizedBox(width: 4.0),
+                Text(
+                  event.date.toLocal().toString(),
+                  style: const TextStyle(fontSize: 16.0),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8.0),
+            Row(
+              children: [
+                const Icon(Icons.location_on, size: 16.0),
+                const SizedBox(width: 4.0),
+                Text(
+                  event.location,
+                  style: const TextStyle(fontSize: 16.0),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12.0),
+            if (event.joinedUsers.isNotEmpty)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Participants:',
+                    style: TextStyle(
+                      fontSize: 16.0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8.0),
+                  for (var joinedUser in event.joinedUsers.take(3))
+                    Text(
+                      '${joinedUser['fullName']} (${joinedUser['email']})',
+                      style: const TextStyle(fontSize: 16.0),
+                    ),
+                  if (event.joinedUsers.length > 3)
+                    Text(
+                      'and ${event.joinedUsers.length - 3} more...',
+                      style: const TextStyle(
+                          fontSize: 16.0, fontStyle: FontStyle.italic),
+                    ),
+                  const SizedBox(height: 8.0),
+                  Text(
+                    'Total Participants: ${event.joinedUsers.length}',
+                    style: const TextStyle(fontSize: 16.0),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 12.0),
+            ElevatedButton(
+              onPressed: () => onJoinToggle(event),
+              child: Text(isAttending ? 'Leave Event' : 'Join Event'),
+            ),
+          ],
         ),
       ),
     );

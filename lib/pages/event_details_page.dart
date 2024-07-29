@@ -134,140 +134,58 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (event.imageUrl.isNotEmpty)
-              Center(
-                child: Container(
-                  constraints: BoxConstraints(maxHeight: 200), // Set a max height
-                  child: CachedNetworkImage(
-                    imageUrl: event.imageUrl,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) =>
-                        Center(child: CircularProgressIndicator()),
-                    errorWidget: (context, url, error) => Container(
-                      color: Colors.grey.shade200,
-                      child: Center(
-                        child: Text('Failed to load image',
-                            style: TextStyle(color: Colors.red)),
+            Text(
+              widget.event.title,
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            Text(
+              widget.event.description,
+              style: TextStyle(fontSize: 18),
+            ),
+            SizedBox(height: 10),
+            Text(
+              'Date: ${widget.event.date.toLocal()}'.split(' ')[0],
+              style: TextStyle(fontSize: 16),
+            ),
+            SizedBox(height: 20),
+            if (widget.event.imageUrl != null && widget.event.imageUrl!.isNotEmpty)
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 10,
+                      offset: Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: CachedNetworkImage(
+                      imageUrl: widget.event.imageUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Center(child: CircularProgressIndicator()),
+                      errorWidget: (context, url, error) => Container(
+                        color: Colors.grey.shade200,
+                        child: Center(
+                          child: Text('Failed to load image', style: TextStyle(color: Colors.red)),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            SizedBox(height: 16),
-            _buildSectionTitle('Event Details'),
-            _buildCardRow([
-              _buildDetailCard(Icons.title, 'Title', event.title),
-              _buildDetailCard(
-                  Icons.description, 'Description', event.description),
-            ]),
-            _buildCardRow([
-              _buildDetailCard(Icons.location_on, 'Location', event.location),
-              _buildDetailCard(Icons.person, 'Organizer', event.organizer),
-            ]),
-            _buildDetailCard(Icons.people, 'Available Seats',
-                event.availableSeats.toString()),
-            SizedBox(height: 16),
-            _buildSectionTitle('Event Schedule'),
-            _buildCardRow([
-              _buildDetailCard(Icons.calendar_today, 'Date',
-                  DateFormat('yyyy-MM-dd').format(event.date)),
-              _buildDetailCard(Icons.access_time, 'Start Time',
-                  DateFormat('HH:mm').format(event.startTime)),
-            ]),
-            _buildDetailCard(Icons.access_time_filled, 'End Time',
-                DateFormat('HH:mm').format(event.endTime)),
-            SizedBox(height: 16),
-            _buildSectionTitle('Tags'),
-            _buildDetailCard(Icons.label, 'Tags', event.tags),
-            SizedBox(height: 16),
-            _buildSectionTitle('Details Others'),
-            _buildCardRow([
-              _buildDetailCard(Icons.article, 'Terms', event.terms),
-              _buildDetailCard(
-                  Icons.contact_phone, 'Contact Info', event.contactInfo),
-            ]),
-            _buildDetailCard(Icons.link, 'Related Link', event.relatedLink),
-            SizedBox(height: 16),
-            Divider(),
-            SizedBox(height: 8),
-            if (event.participants.isEmpty)
-              Center(
-                child: Text(
-                  'No participants yet. Be the first to join!',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey),
-                ),
-              )
-            else
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Participants:',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  ...event.participants.map((participant) {
-                    return ListTile(
-                      leading: Icon(Icons.person),
-                      title: Text(participant.fullName ?? 'Unknown'),
-                      subtitle: Text(participant.email ?? 'Unknown'),
-                    );
-                  }).toList(),
-                ],
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => _confirmDelete(context),
+              child: Text('Delete Event'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
               ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Text(
-        title,
-        style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.blueAccent),
-      ),
-    );
-  }
-
-  Widget _buildCardRow(List<Widget> cards) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: cards.map((card) => Flexible(child: card)).toList(),
-    );
-  }
-
-  Widget _buildDetailCard(IconData icon, String label, String value) {
-    return Card(
-      margin: const EdgeInsets.all(8.0),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: Colors.grey),
-                SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[700]),
-                ),
-              ],
-            ),
-            SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(fontSize: 14, color: Colors.black87),
             ),
           ],
         ),

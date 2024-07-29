@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:intl/intl.dart';
-import 'package:intl/date_symbol_data_local.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'add_event_page.dart';
 import 'edit_event_page.dart';
@@ -95,33 +92,37 @@ class _CalendarPageState extends State<CalendarPage> {
           child: ListTile(
             title: Text(
               event.title,
-              style: GoogleFonts.roboto(
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18.0,
-                  color: Colors.black87,
-                ),
-              ),
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            subtitle: Text(
-              event.description,
-              style: GoogleFonts.roboto(
-                textStyle: const TextStyle(
-                  fontSize: 14.0,
-                  color: Colors.black54,
+            subtitle: Text(event.description),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isAttending)
+                  const Icon(Icons.event_available, color: Colors.green),
+                IconButton(
+                  icon: const Icon(Icons.info, color: Colors.blue),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => EventDetailsPage(event: event)),
+                    );
+                  },
                 ),
-              ),
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.orange),
+                  onPressed: () async {
+                    bool? result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => EditEventPage(user: widget.user, event: event)),
+                    );
+                    if (result == true) {
+                      fetchEvents();
+                    }
+                  },
+                ),
+              ],
             ),
-            onTap: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => EventDetailsPage(event: event),
-                ),
-              );
-              // Refresh events after details page
-            },
-            trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF00ADB5)),
           ),
         );
       },
@@ -150,112 +151,52 @@ class _CalendarPageState extends State<CalendarPage> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: TableCalendar(
-                    locale: 'th_TH',
-                    firstDay: DateTime.utc(2010, 10, 16),
-                    lastDay: DateTime.utc(2030, 3, 14),
-                    focusedDay: _focusedDay,
-                    calendarFormat: _calendarFormat,
-                    selectedDayPredicate: (day) {
-                      return isSameDay(_selectedDay, day);
-                    },
-                    onDaySelected: (selectedDay, focusedDay) {
-                      setState(() {
-                        _selectedDay = selectedDay;
-                        _focusedDay = focusedDay;
-                      });
-                    },
-                    onFormatChanged: (format) {
-                      if (_calendarFormat != format) {
-                        setState(() {
-                          _calendarFormat = format;
-                        });
-                      }
-                    },
-                    onPageChanged: (focusedDay) {
+                TableCalendar(
+                  firstDay: DateTime.utc(2010, 10, 16),
+                  lastDay: DateTime.utc(2030, 3, 14),
+                  focusedDay: _focusedDay,
+                  calendarFormat: _calendarFormat,
+                  selectedDayPredicate: (day) {
+                    return isSameDay(_selectedDay, day);
+                  },
+                  onDaySelected: (selectedDay, focusedDay) {
+                    setState(() {
+                      _selectedDay = selectedDay;
                       _focusedDay = focusedDay;
-                    },
-                    eventLoader: _getEventsForDay,
-                    calendarStyle: CalendarStyle(
-                      markersMaxCount: 1,
-                      markerDecoration: const BoxDecoration(
-                        color: Color(0xFF00ADB5),
-                        shape: BoxShape.circle,
-                      ),
-                      selectedDecoration: const BoxDecoration(
-                        color: Color(0xFF00ADB5),
-                        shape: BoxShape.circle,
-                      ),
-                      todayDecoration: BoxDecoration(
-                        color: Color(0xFF00ADB5).withOpacity(0.3),
-                        shape: BoxShape.circle,
-                      ),
-                      weekendTextStyle: TextStyle(color: Colors.redAccent),
-                      outsideDaysVisible: false,
-                      todayTextStyle: TextStyle(color: Colors.black87),
-                      defaultTextStyle: TextStyle(color: Colors.black87),
-                      selectedTextStyle: TextStyle(color: Colors.white),
-                      cellMargin: EdgeInsets.all(4.0),
+                    });
+                  },
+                  onFormatChanged: (format) {
+                    if (_calendarFormat != format) {
+                      setState(() {
+                        _calendarFormat = format;
+                      });
+                    }
+                  },
+                  onPageChanged: (focusedDay) {
+                    _focusedDay = focusedDay;
+                  },
+                  eventLoader: _getEventsForDay,
+                  calendarStyle: CalendarStyle(
+                    markersMaxCount: 1,
+                    markerDecoration: const BoxDecoration(
+                      color: Colors.blueAccent,
+                      shape: BoxShape.circle,
                     ),
-                    headerStyle: HeaderStyle(
-                      formatButtonVisible: false,
-                      titleCentered: true,
-                      titleTextStyle: GoogleFonts.roboto(
-                        textStyle: const TextStyle(
-                          fontSize: 20.0,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF00ADB5),
-                        ),
-                      ),
-                      leftChevronIcon: const Icon(
-                        Icons.chevron_left,
-                        color: Color(0xFF00ADB5),
-                      ),
-                      rightChevronIcon: const Icon(
-                        Icons.chevron_right,
-                        color: Color(0xFF00ADB5),
-                      ),
-                      headerPadding: EdgeInsets.symmetric(vertical: 4.0),
+                    selectedDecoration: const BoxDecoration(
+                      color: Colors.blue,
+                      shape: BoxShape.circle,
                     ),
-                    daysOfWeekStyle: DaysOfWeekStyle(
-                      weekdayStyle: TextStyle(
-                        color: Color(0xFF00ADB5),
-                        fontWeight: FontWeight.bold,
-                      ),
-                      weekendStyle: TextStyle(
-                        color: Colors.redAccent,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    todayDecoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      shape: BoxShape.circle,
                     ),
-                    calendarBuilders: CalendarBuilders(
-                      markerBuilder: (context, date, events) {
-                        if (events.isNotEmpty) {
-                          return Positioned(
-                            right: 1,
-                            bottom: 1,
-                            child: Container(
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.redAccent,
-                              ),
-                              width: 16.0,
-                              height: 16.0,
-                              child: Center(
-                                child: Text(
-                                  '${events.length}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12.0,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }
-                        return null;
-                      },
+                  ),
+                  headerStyle: const HeaderStyle(
+                    formatButtonVisible: false,
+                    titleCentered: true,
+                    titleTextStyle: TextStyle(
+                      fontSize: 18.0,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
@@ -282,13 +223,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'Upcoming Events',
-                      style: GoogleFonts.roboto(
-                        textStyle: const TextStyle(
-                          fontSize: 18.0,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
+                      style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),

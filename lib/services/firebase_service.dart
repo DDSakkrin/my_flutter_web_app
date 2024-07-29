@@ -98,11 +98,11 @@ class FirebaseService {
                     }
                   })
                   .whereType<UserModel>()
-                  .toList();
-              print('Participants list during creation: $participants');
+                  .toSet(); // Convert to Set<UserModel>
+              print('Participants set during creation: $participants');
               eventMap['participants'] = participants;
             } else {
-              eventMap['participants'] = [];
+              eventMap['participants'] = <UserModel>{}; // Empty set
             }
 
             events.add(Event.fromMap(eventMap));
@@ -153,7 +153,7 @@ class FirebaseService {
                 .info('Participants map created: ${eventMap['participants']}');
             final participantsMap = Map<String, dynamic>.from(
                 eventMap['participants'] as Map<dynamic, dynamic>);
-            final participants = <UserModel>[];
+            final participants = <UserModel>{};
 
             participantsMap.forEach((participantKey, participantValue) {
               _logger.info('Processing participant key: $participantKey');
@@ -173,9 +173,9 @@ class FirebaseService {
               }
             });
             eventMap['participants'] = participants;
-            _logger.info('Participants list created: $participants');
+            _logger.info('Participants set created: $participants');
           } else {
-            eventMap['participants'] = [];
+            eventMap['participants'] = <UserModel>{}; // Empty set
           }
 
           return Event.fromMap(eventMap);
@@ -216,7 +216,7 @@ class FirebaseService {
                           final participantMap =
                               Map<String, dynamic>.from(participantValue);
                           print('Parsed participant map: $participantMap');
-                          return participantMap;
+                          return UserModel.fromMap(participantMap);
                         } catch (e) {
                           print(
                               'Error parsing participant: $participantValue, error: $e');
@@ -227,12 +227,12 @@ class FirebaseService {
                         return null;
                       }
                     })
-                    .whereType<Map<String, dynamic>>()
-                    .toList();
-                print('Participants list during creation: $participants');
+                    .whereType<UserModel>()
+                    .toSet(); // Convert to Set<UserModel>
+                print('Participants set during creation: $participants');
                 eventMap['participants'] = participants;
               } else {
-                eventMap['participants'] = [];
+                eventMap['participants'] = <UserModel>{}; // Empty set
               }
 
               print('Event Map after participants parsing: $eventMap');
