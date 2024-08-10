@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_picker_web/image_picker_web.dart';
+import 'package:intl/intl.dart';
 import '../models/event_model.dart';
 import '../services/firebase_service.dart';
 import 'dart:io';
@@ -13,7 +14,7 @@ class EditEventPage extends StatefulWidget {
   final User user;
   final Event event;
 
-  EditEventPage({required this.user, required this.event});
+  const EditEventPage({required this.user, required this.event}); // Made const
 
   @override
   _EditEventPageState createState() => _EditEventPageState();
@@ -24,11 +25,19 @@ class _EditEventPageState extends State<EditEventPage> {
   late String _title;
   late String _description;
   late String _location;
+  late String _organizer;
+  late String _relatedLink;
+  late String _terms;
+  late int _availableSeats;
+  late String _contactInfo;
+  late String _tags;
   File? _imageFile;
   Uint8List? _imageBytes;
   late DateTime _selectedDate;
-  TimeOfDay? _selectedTime;
+  TimeOfDay? _selectedStartTime;
+  TimeOfDay? _selectedEndTime;
   String? _imageUrl;
+  late List<Map<String, String>> _joinedUsers; // Correct type for joinedUsers
 
   @override
   void initState() {
@@ -38,24 +47,41 @@ class _EditEventPageState extends State<EditEventPage> {
     _location = widget.event.location;
     _selectedDate = widget.event.date;
     _imageUrl = widget.event.imageUrl;
-    _selectedTime = widget.event.reminderTime != null
-        ? TimeOfDay.fromDateTime(widget.event.reminderTime!)
-        : null;
+    _selectedStartTime = TimeOfDay.fromDateTime(widget.event.startTime);
+    _selectedEndTime = TimeOfDay.fromDateTime(widget.event.endTime);
+    _startTime = widget.event.startTime;
+    _endTime = widget.event.endTime;
+    _organizer = widget.event.organizer;
+    _relatedLink = widget.event.relatedLink;
+    _terms = widget.event.terms;
+    _availableSeats = widget.event.availableSeats;
+    _contactInfo = widget.event.contactInfo;
+    _tags = widget.event.tags;
+
+    if (_tags == 'อื่นๆ (Others)') {
+      _isOtherSelected = true;
+      _otherTag = widget.event.tags;
+    }
   }
 
   Future<void> _pickImage() async {
-    if (kIsWeb) {
-      final pickedBytes = await ImagePickerWeb.getImageAsBytes();
-      setState(() {
-        _imageBytes = pickedBytes;
-        _imageFile = null;
-      });
-    } else {
-      final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
-      setState(() {
-        _imageFile = pickedFile != null ? File(pickedFile.path) : null;
-        _imageBytes = null;
-      });
+    try {
+      if (kIsWeb) {
+        final pickedBytes = await ImagePickerWeb.getImageAsBytes();
+        setState(() {
+          _imageBytes = pickedBytes;
+          _imageFile = null;
+        });
+      } else {
+        final pickedFile =
+            await ImagePicker().pickImage(source: ImageSource.gallery);
+        setState(() {
+          _imageFile = pickedFile != null ? File(pickedFile.path) : null;
+          _imageBytes = null;
+        });
+      }
+    } catch (e) {
+      _showSnackBar('Error picking image: $e');
     }
   }
 
@@ -73,21 +99,27 @@ class _EditEventPageState extends State<EditEventPage> {
     }
   }
 
-  Future<void> _pickTime(BuildContext context) async {
+  Future<void> _pickTime(BuildContext context, bool isStartTime) async {
     final pickedTime = await showTimePicker(
       context: context,
-      initialTime: _selectedTime ?? TimeOfDay.now(),
+      initialTime: isStartTime
+          ? (_selectedStartTime ?? TimeOfDay.now())
+          : (_selectedEndTime ?? TimeOfDay.now()),
     );
     if (pickedTime != null) {
       setState(() {
-        _selectedTime = pickedTime;
+        if (isStartTime) {
+          _selectedStartTime = pickedTime;
+        } else {
+          _selectedEndTime = pickedTime;
+        }
       });
     }
   }
 
   Future<void> _submit() async {
-    if (_formKey.currentState!.validate()) {
-      _formKey.currentState!.save();
+    if (_formKey.currentState?.validate() ?? false) {
+      _formKey.currentState?.save();
 
       if (_imageFile != null || _imageBytes != null) {
         final storageRef = FirebaseStorage.instance
@@ -101,7 +133,8 @@ class _EditEventPageState extends State<EditEventPage> {
           }
           _imageUrl = await storageRef.getDownloadURL();
         } catch (e) {
-          print('Error uploading image: $e');
+          _showSnackBar('Error uploading image: $e');
+          return;
         }
       }
 
@@ -110,35 +143,67 @@ class _EditEventPageState extends State<EditEventPage> {
         title: _title,
         description: _description,
         location: _location,
-        imageUrl: _imageUrl,
+        imageUrl: _imageUrl ?? '', // Handle null case here
         createdBy: widget.user.uid,
         date: _selectedDate,
-        reminderTime: _selectedTime != null
+        reminderTime: _selectedStartTime != null
             ? DateTime(
                 _selectedDate.year,
                 _selectedDate.month,
                 _selectedDate.day,
-                _selectedTime!.hour,
-                _selectedTime!.minute,
+                _selectedStartTime!.hour,
+                _selectedStartTime!.minute,
               )
             : null,
-        joinedUsers: widget.event.joinedUsers,
+        startTime: DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+          _selectedStartTime?.hour ?? 0,
+          _selectedStartTime?.minute ?? 0,
+        ),
+        endTime: DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+          _selectedEndTime?.hour ?? 0,
+          _selectedEndTime?.minute ?? 0,
+        ),
+        participants:
+            widget.event.participants, // Provide the existing participants
+        organizer: _organizer,
+        relatedLink: _relatedLink,
+        terms: _terms,
+        availableSeats: _availableSeats,
+        contactInfo: _contactInfo,
+        tags: _isOtherSelected ? _otherTag! : _tags,
       );
 
-      await FirebaseService.updateEvent(updatedEvent);
-
-      Navigator.pop(context, true);
+      try {
+        await FirebaseService.updateEvent(updatedEvent);
+        Navigator.pop(context, true); // Pass a true flag to indicate success
+      } catch (e) {
+        _showSnackBar('Error updating event: $e');
+      }
     }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Edit Event'),
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(16.0),
+        padding: EdgeInsets.all(isMobile ? 8.0 : 16.0),
         child: Form(
           key: _formKey,
           child: Column(
